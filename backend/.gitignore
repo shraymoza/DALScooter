@@ -1,0 +1,31 @@
+# Bytecode files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Lambda zip builds (if you ever package functions)
+*.zip
+
+# Terraform state files
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.auto.tfvars
+
+# Logs and temp
+*.log
+*.tmp
+
+# IDE/editor config
+.vscode/
+.idea/
+*.swp
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Local environment config
+aws-config.ps1
