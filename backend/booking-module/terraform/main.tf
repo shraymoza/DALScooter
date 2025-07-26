@@ -88,7 +88,7 @@ resource "aws_lambda_function" "create_booking_lambda" {
   environment {
     variables = {
       BOOKINGS_TABLE = aws_dynamodb_table.bookings_table.name
-      BIKES_TABLE    = "DALScooterBikes"
+      BIKES_TABLE    = "BikeInventoryTable"
     }
   }
 
@@ -158,7 +158,7 @@ resource "aws_lambda_function" "get_available_vehicles_lambda" {
   environment {
     variables = {
       BOOKINGS_TABLE = aws_dynamodb_table.bookings_table.name
-      BIKES_TABLE    = "DALScooterBikes"
+      BIKES_TABLE    = "BikeInventoryTable"
     }
   }
 
