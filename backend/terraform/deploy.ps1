@@ -1,7 +1,10 @@
 # Set credentials
 . .\aws-config.ps1
 
+Write-Host "🚀 Starting DALScooter Deployment..." -ForegroundColor Green
+
 # Run terraform apply
+Write-Host "🏗️  Deploying infrastructure with Terraform..." -ForegroundColor Yellow
 terraform init
 terraform plan
 terraform apply -auto-approve
@@ -20,3 +23,10 @@ aws amplify start-job `
   --job-reason "Initial deploy from script" | Out-Null
 
 Write-Host "Amplify deployment job started."
+
+# Display deployment outputs
+Write-Host "📋 Deployment Outputs:" -ForegroundColor Yellow
+terraform output
+
+Write-Host "🎉 DALScooter deployment completed successfully!" -ForegroundColor Green
+Write-Host "Remember to update your frontend environment variables with the new API endpoints." -ForegroundColor Yellow

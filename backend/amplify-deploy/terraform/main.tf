@@ -40,6 +40,7 @@ EOT
     VITE_BIKE_CRUD_API            = var.bike_crud_api
     VITE_FEEDBACK_API             = var.feedback_api
     VITE_COMPLAINT_API            = var.complaint_api
+    VITE_BOOKING_API              = var.booking_api
   }
 }
 

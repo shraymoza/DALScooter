@@ -1,8 +1,8 @@
 "use client"
 
-import { useState,useEffect } from "react"
-import { Link } from "react-router-dom"
-import { ArrowLeft, Calendar, Clock, MapPin, Bike } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Link, useNavigate } from "react-router-dom"
+import { ArrowLeft, Calendar, Clock, MapPin, Bike, CheckCircle, AlertCircle, Loader } from "lucide-react"
 
 export default function Booking() {
   const [selectedVehicle, setSelectedVehicle] = useState("")
@@ -11,17 +11,52 @@ export default function Booking() {
   const [endTime, setEndTime] = useState("")
   const [location, setLocation] = useState("")
   const [message, setMessage] = useState("")
-  const [vehicles, setVehicles] = useState([]);
-  const API_BASE = import.meta.env.VITE_BIKE_CRUD_API;
+  const [messageType, setMessageType] = useState("") // success, error
+  const [loading, setLoading] = useState(false)
+  const [availableVehicles, setAvailableVehicles] = useState([])
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+  
+  const navigate = useNavigate()
+  const API_BASE = import.meta.env.VITE_BOOKING_API
 
   useEffect(() => {
-    const fetchBikes = async () => {
-    const res = await fetch(`${API_BASE}/bikes`);
-    const data = await res.json();
-    setVehicles(data);
-  };
-    fetchBikes();
-  }, []);
+    // Set minimum date to today
+    const today = new Date().toISOString().split('T')[0]
+    setSelectedDate(today)
+  }, [])
+
+  // Check availability when date, time, or location changes
+  useEffect(() => {
+    if (selectedDate && startTime && endTime && location) {
+      checkAvailability()
+    }
+  }, [selectedDate, startTime, endTime, location])
+
+  const checkAvailability = async () => {
+    if (!selectedDate || !startTime || !endTime) return
+
+    setCheckingAvailability(true)
+    try {
+      const params = new URLSearchParams({
+        date: selectedDate,
+        startTime: startTime,
+        endTime: endTime
+      })
+
+      const response = await fetch(`${API_BASE}/available-vehicles?${params}`)
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableVehicles(data.vehicles || [])
+      } else {
+        setAvailableVehicles([])
+      }
+    } catch (error) {
+      console.error("Error checking availability:", error)
+      setAvailableVehicles([])
+    } finally {
+      setCheckingAvailability(false)
+    }
+  }
 
 //   const vehicles = [
 //     { id: "gyroscooter", name: "Gyroscooter", price: 15, available: 8 },
@@ -37,10 +72,70 @@ export default function Booking() {
     "Citadel Hill",
   ]
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    // Simulate booking process
-    setMessage("Booking request submitted successfully! You will receive a confirmation email shortly.")
+    
+    if (!selectedVehicle || !selectedDate || !startTime || !endTime || !location) {
+      setMessage("Please fill in all required fields")
+      setMessageType("error")
+      return
+    }
+
+    setLoading(true)
+    setMessage("")
+    
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        navigate("/login")
+        return
+      }
+
+      const bookingData = {
+        bikeId: selectedVehicle,
+        bookingDate: selectedDate,
+        startTime: startTime,
+        endTime: endTime,
+        pickupLocation: location
+      }
+
+      const response = await fetch(`${API_BASE}/bookings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token,
+        },
+        body: JSON.stringify(bookingData),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setMessage(`Booking confirmed! Reference: ${data.bookingReference}. Access Code: ${data.accessCode}`)
+        setMessageType("success")
+        
+        // Reset form
+        setSelectedVehicle("")
+        setStartTime("")
+        setEndTime("")
+        setLocation("")
+        setAvailableVehicles([])
+        
+        // Redirect to bookings page after 3 seconds
+        setTimeout(() => {
+          navigate("/my-bookings")
+        }, 3000)
+      } else {
+        setMessage(data.error || "Failed to create booking")
+        setMessageType("error")
+      }
+    } catch (error) {
+      console.error("Error creating booking:", error)
+      setMessage("An error occurred while creating your booking")
+      setMessageType("error")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -67,24 +162,57 @@ export default function Booking() {
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Vehicle Selection */}
             <div>
-              <label className="block text-lg font-semibold text-slate-800 mb-4">Choose Vehicle Type</label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {vehicles.map((vehicle) => (
-                  <div
-                    key={vehicle.bikeId}
-                    className={`p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
-                      selectedVehicle === vehicle.id
-                        ? "border-indigo-500 bg-indigo-50/50"
-                        : "border-slate-200 bg-white/50 hover:border-slate-300"
-                    }`}
-                    onClick={() => setSelectedVehicle(vehicle.id)}
-                  >
-                    <h3 className="font-bold text-slate-800 text-lg mb-2">{vehicle.name}</h3>
-                    <p className="text-2xl font-bold text-indigo-600 mb-2">${vehicle.price}/hr</p>
-                    <p className="text-sm text-slate-600">{vehicle.available} available</p>
-                  </div>
-                ))}
-              </div>
+              <label className="block text-lg font-semibold text-slate-800 mb-4">
+                Choose Available Vehicle
+                {checkingAvailability && (
+                  <span className="ml-2 inline-flex items-center text-sm text-slate-600">
+                    <Loader className="h-4 w-4 animate-spin mr-1" />
+                    Checking availability...
+                  </span>
+                )}
+              </label>
+              
+              {availableVehicles.length === 0 && selectedDate && startTime && endTime && location ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                  <p className="text-slate-600 mb-2">No vehicles available for the selected time slot</p>
+                  <p className="text-sm text-slate-500">Try a different date, time, or location</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {availableVehicles.map((vehicle) => (
+                    <div
+                      key={vehicle.bikeId}
+                      className={`p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
+                        selectedVehicle === vehicle.bikeId
+                          ? "border-indigo-500 bg-indigo-50/50"
+                          : "border-slate-200 bg-white/50 hover:border-slate-300"
+                      }`}
+                      onClick={() => setSelectedVehicle(vehicle.bikeId)}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-bold text-slate-800 text-lg">{vehicle.model}</h3>
+                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                          Available
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-2 mb-4">
+                        <p className="text-sm text-slate-600">Type: {vehicle.type}</p>
+                        <p className="text-sm text-slate-600">Battery: {vehicle.batteryLife}</p>
+                        {vehicle.discount && (
+                          <p className="text-sm text-green-600 font-semibold">Discount: {vehicle.discount}</p>
+                        )}
+                      </div>
+                      
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-indigo-600">${vehicle.hourlyRate}/hr</p>
+                        <p className="text-xs text-slate-500 mt-1">Access Code: {vehicle.accessCode}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Date and Time */}
@@ -154,15 +282,42 @@ export default function Booking() {
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-indigo-500 to-blue-400 text-white border-none rounded-lg py-4 px-6 text-xl font-bold cursor-pointer transition-all duration-200 hover:from-indigo-600 hover:to-blue-500 hover:shadow-lg transform hover:-translate-y-0.5 active:translate-y-0"
+              disabled={loading || !selectedVehicle}
+              className={`w-full border-none rounded-lg py-4 px-6 text-xl font-bold transition-all duration-200 ${
+                loading || !selectedVehicle
+                  ? "bg-slate-400 cursor-not-allowed"
+                  : "bg-gradient-to-r from-indigo-500 to-blue-400 text-white hover:from-indigo-600 hover:to-blue-500 hover:shadow-lg transform hover:-translate-y-0.5 active:translate-y-0"
+              }`}
             >
-              Reserve Now
+              {loading ? (
+                <span className="flex items-center justify-center">
+                  <Loader className="h-5 w-5 animate-spin mr-2" />
+                  Creating Booking...
+                </span>
+              ) : (
+                "Reserve Now"
+              )}
             </button>
           </form>
 
           {message && (
-            <div className="mt-6 p-4 bg-green-50/80 border border-green-200 rounded-lg">
-              <p className="text-green-800 font-semibold">{message}</p>
+            <div className={`mt-6 p-4 rounded-lg border ${
+              messageType === "success" 
+                ? "bg-green-50/80 border-green-200" 
+                : "bg-red-50/80 border-red-200"
+            }`}>
+              <div className="flex items-center">
+                {messageType === "success" ? (
+                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+                )}
+                <p className={`font-semibold ${
+                  messageType === "success" ? "text-green-800" : "text-red-800"
+                }`}>
+                  {message}
+                </p>
+              </div>
             </div>
           )}
         </div>
