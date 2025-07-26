@@ -29,6 +29,12 @@ data "archive_file" "get_available_vehicles_lambda_zip" {
   output_path = "${path.module}/../lambdas/get_available_vehicles_lambda.zip"
 }
 
+data "archive_file" "booking_email_notification_lambda_zip" {
+  type        = "zip"
+  source_file = "${path.module}/../lambdas/booking_email_notification_lambda.py"
+  output_path = "${path.module}/../lambdas/booking_email_notification_lambda.zip"
+}
+
 # DynamoDB Table for Bookings
 resource "aws_dynamodb_table" "bookings_table" {
   name           = "DALScooterBookings"
@@ -176,6 +182,23 @@ resource "aws_lambda_function" "get_available_vehicles_lambda" {
   }
 }
 
+# Booking Email Notification Lambda
+resource "aws_lambda_function" "booking_email_notification_lambda" {
+  filename         = data.archive_file.booking_email_notification_lambda_zip.output_path
+  function_name    = "DALScooterBookingEmailNotificationLambda"
+  role            = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
+  handler         = "booking_email_notification_lambda.lambda_handler"
+  runtime         = "python3.9"
+  timeout         = 30
+
+  depends_on = [data.archive_file.booking_email_notification_lambda_zip]
+
+  tags = {
+    Project = "DALScooter"
+    Module  = "Booking"
+  }
+}
+
 # API Gateway
 resource "aws_apigatewayv2_api" "booking_api" {
   name          = "DALScooterBookingAPI"
@@ -301,4 +324,12 @@ resource "aws_lambda_permission" "get_available_vehicles_permission" {
   function_name = aws_lambda_function.get_available_vehicles_lambda.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.booking_api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "booking_email_notification_permission" {
+  statement_id  = "AllowExecutionFromCreateBookingLambda"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.booking_email_notification_lambda.function_name
+  principal     = "lambda.amazonaws.com"
+  source_arn    = aws_lambda_function.create_booking_lambda.arn
 } 

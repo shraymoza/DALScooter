@@ -182,6 +182,39 @@ def lambda_handler(event, context):
         
         logger.info(f"Booking created successfully: {booking_reference}")
         
+        # Trigger email notification
+        try:
+            lambda_client = boto3.client('lambda')
+            
+            # Prepare email notification data
+            email_data = {
+                'booking': {
+                    'userEmail': user_email,
+                    'bookingReference': booking_reference,
+                    'bookingDate': booking_date,
+                    'startTime': start_time,
+                    'endTime': end_time,
+                    'pickupLocation': pickup_location,
+                    'vehicleModel': bike['model'],
+                    'vehicleType': bike['type'],
+                    'totalCost': total_cost,
+                    'accessCode': bike['accessCode']
+                }
+            }
+            
+            # Invoke email notification Lambda asynchronously
+            lambda_client.invoke(
+                FunctionName='DALScooterBookingEmailNotificationLambda',
+                InvocationType='Event',  # Asynchronous invocation
+                Payload=json.dumps(email_data)
+            )
+            
+            logger.info(f"Email notification triggered for booking: {booking_reference}")
+            
+        except Exception as email_error:
+            logger.error(f"Failed to trigger email notification: {str(email_error)}")
+            # Don't fail the booking creation if email fails
+        
         return {
             'statusCode': 201,
             'headers': {
