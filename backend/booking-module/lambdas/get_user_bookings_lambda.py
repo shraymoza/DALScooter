@@ -45,8 +45,9 @@ def lambda_handler(event, context):
         status_filter = query_params.get('status')
         date_filter = query_params.get('date')
         
-        # Query user's bookings
+        # Query user's bookings using UserIdIndex
         response = bookings_table.query(
+            IndexName='UserIdIndex',
             KeyConditionExpression=Key('userId').eq(user_id),
             ScanIndexForward=False  # Sort by bookingId descending (newest first)
         )

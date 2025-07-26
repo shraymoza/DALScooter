@@ -24,6 +24,11 @@ export default function MyBookings() {
       setLoading(true)
       const token = localStorage.getItem("token")
       
+      if (!token) {
+        setError("No authentication token found")
+        return
+      }
+      
       let url = `${API_BASE}/bookings`
       const params = new URLSearchParams()
       
@@ -38,22 +43,32 @@ export default function MyBookings() {
         url += `?${params.toString()}`
       }
 
+      console.log("Fetching bookings from:", url)
+      console.log("Token:", token.substring(0, 20) + "...")
+
       const response = await fetch(url, {
         headers: {
           Authorization: token,
         },
       })
 
+      console.log("Response status:", response.status)
+      console.log("Response headers:", response.headers)
+
       if (!response.ok) {
-        throw new Error("Failed to fetch bookings")
+        const errorText = await response.text()
+        console.error("Response error:", errorText)
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
 
       const data = await response.json()
+      console.log("Response data:", data)
+      
       setBookings(data.bookings || [])
       setError("")
     } catch (err) {
-      setError("Failed to load bookings")
       console.error("Error fetching bookings:", err)
+      setError(`Failed to load bookings: ${err.message}`)
     } finally {
       setLoading(false)
     }

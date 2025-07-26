@@ -68,6 +68,12 @@ resource "aws_dynamodb_table" "bookings_table" {
     projection_type = "ALL"
   }
 
+  global_secondary_index {
+    name            = "UserIdIndex"
+    hash_key        = "userId"
+    projection_type = "ALL"
+  }
+
   tags = {
     Project = "DALScooter"
     Module  = "Booking"
@@ -177,7 +183,7 @@ resource "aws_apigatewayv2_api" "booking_api" {
   cors_configuration {
     allow_origins = ["*"]
     allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["*"]
+    allow_headers = ["*", "Authorization", "Content-Type"]
   }
 }
 
