@@ -20,6 +20,7 @@ class DecimalEncoder(json.JSONEncoder):
 
 def lambda_handler(event, context):
     logger.info(f"Received event: {json.dumps(event)}")
+    logger.info("VERSION: Updated Lambda with scan-first approach")
     
     try:
         # Extract user info from JWT
