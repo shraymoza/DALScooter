@@ -2,6 +2,8 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_caller_identity" "current" {}
+
 # Data sources to package Lambda functions
 data "archive_file" "create_booking_lambda_zip" {
   type        = "zip"
@@ -72,77 +74,13 @@ resource "aws_dynamodb_table" "bookings_table" {
   }
 }
 
-# IAM Role for Lambda Functions
-resource "aws_iam_role" "booking_lambda_role" {
-  name = "DALScooterBookingLambdaRole"
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "lambda.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-# IAM Policy for Lambda Functions
-resource "aws_iam_role_policy" "booking_lambda_policy" {
-  name = "DALScooterBookingLambdaPolicy"
-  role = aws_iam_role.booking_lambda_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
-        Resource = "arn:aws:logs:*:*:*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:Query",
-          "dynamodb:Scan"
-        ]
-        Resource = [
-          aws_dynamodb_table.bookings_table.arn,
-          "${aws_dynamodb_table.bookings_table.arn}/index/*"
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:Query",
-          "dynamodb:Scan"
-        ]
-        Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:*:table/DALScooterBikes",
-          "arn:aws:dynamodb:${var.aws_region}:*:table/DALScooterBikes/index/*"
-        ]
-      }
-    ]
-  })
-}
 
 # Create Booking Lambda
 resource "aws_lambda_function" "create_booking_lambda" {
   filename         = data.archive_file.create_booking_lambda_zip.output_path
   function_name    = "DALScooterCreateBookingLambda"
-  role            = aws_iam_role.booking_lambda_role.arn
+  role            = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
   handler         = "create_booking_lambda.lambda_handler"
   runtime         = "python3.9"
   timeout         = 30
@@ -166,7 +104,7 @@ resource "aws_lambda_function" "create_booking_lambda" {
 resource "aws_lambda_function" "get_user_bookings_lambda" {
   filename         = data.archive_file.get_user_bookings_lambda_zip.output_path
   function_name    = "DALScooterGetUserBookingsLambda"
-  role            = aws_iam_role.booking_lambda_role.arn
+  role            = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
   handler         = "get_user_bookings_lambda.lambda_handler"
   runtime         = "python3.9"
   timeout         = 30
@@ -189,7 +127,7 @@ resource "aws_lambda_function" "get_user_bookings_lambda" {
 resource "aws_lambda_function" "cancel_booking_lambda" {
   filename         = data.archive_file.cancel_booking_lambda_zip.output_path
   function_name    = "DALScooterCancelBookingLambda"
-  role            = aws_iam_role.booking_lambda_role.arn
+  role            = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
   handler         = "cancel_booking_lambda.lambda_handler"
   runtime         = "python3.9"
   timeout         = 30
@@ -212,7 +150,7 @@ resource "aws_lambda_function" "cancel_booking_lambda" {
 resource "aws_lambda_function" "get_available_vehicles_lambda" {
   filename         = data.archive_file.get_available_vehicles_lambda_zip.output_path
   function_name    = "DALScooterGetAvailableVehiclesLambda"
-  role            = aws_iam_role.booking_lambda_role.arn
+  role            = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
   handler         = "get_available_vehicles_lambda.lambda_handler"
   runtime         = "python3.9"
   timeout         = 30
