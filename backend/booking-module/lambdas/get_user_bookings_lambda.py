@@ -20,7 +20,7 @@ class DecimalEncoder(json.JSONEncoder):
 
 def lambda_handler(event, context):
     logger.info(f"Received event: {json.dumps(event)}")
-    logger.info("VERSION: Updated Lambda with scan-first approach")
+    logger.info("VERSION: Updated Lambda with scan-first approach - FORCE REDEPLOY")
     
     try:
         # Extract user info from JWT
@@ -50,44 +50,32 @@ def lambda_handler(event, context):
         status_filter = query_params.get('status')
         date_filter = query_params.get('date')
         
-        # Query user's bookings - try multiple approaches
+        # Query user's bookings using UserIdIndex GSI
         bookings = []
         
-        # First try: Simple scan and filter in Python (most reliable)
         try:
-            logger.info("Attempting full scan with Python filtering...")
-            response = bookings_table.scan()
-            all_bookings = response.get('Items', [])
-            # Filter by userId in Python
-            bookings = [b for b in all_bookings if b.get('userId') == user_id]
-            logger.info(f"Scan found {len(bookings)} bookings for user {user_id}")
-        except Exception as scan_error:
-            logger.error(f"Full scan failed: {str(scan_error)}")
+            logger.info(f"Querying UserIdIndex for user: {user_id}")
+            response = bookings_table.query(
+                IndexName='UserIdIndex',
+                KeyConditionExpression=Key('userId').eq(user_id),
+                ScanIndexForward=False  # Sort by bookingId descending (newest first)
+            )
+            bookings = response.get('Items', [])
+            logger.info(f"GSI query found {len(bookings)} bookings for user {user_id}")
+        except Exception as gsi_error:
+            logger.error(f"GSI query failed: {str(gsi_error)}")
             
-            # Second try: Scan with DynamoDB filter
+            # Fallback: Scan with DynamoDB filter
             try:
-                logger.info("Attempting scan with DynamoDB filter...")
+                logger.info("Attempting scan with DynamoDB filter as fallback...")
                 response = bookings_table.scan(
                     FilterExpression=Key('userId').eq(user_id)
                 )
                 bookings = response.get('Items', [])
-                logger.info(f"Filtered scan found {len(bookings)} bookings")
-            except Exception as filter_error:
-                logger.error(f"Filtered scan failed: {str(filter_error)}")
-                
-                # Third try: GSI query (if available)
-                try:
-                    logger.info("Attempting GSI query...")
-                    response = bookings_table.query(
-                        IndexName='UserIdIndex',
-                        KeyConditionExpression=Key('userId').eq(user_id),
-                        ScanIndexForward=False
-                    )
-                    bookings = response.get('Items', [])
-                    logger.info(f"GSI query found {len(bookings)} bookings")
-                except Exception as gsi_error:
-                    logger.error(f"GSI query failed: {str(gsi_error)}")
-                    bookings = []
+                logger.info(f"Scan fallback found {len(bookings)} bookings")
+            except Exception as scan_error:
+                logger.error(f"Scan fallback failed: {str(scan_error)}")
+                bookings = []
         
         # Apply filters if provided
         if status_filter:
