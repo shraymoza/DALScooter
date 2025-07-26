@@ -22,6 +22,10 @@ dynamodb = boto3.resource('dynamodb')
 bookings_table = dynamodb.Table(os.environ['BOOKINGS_TABLE'])
 bikes_table = dynamodb.Table(os.environ['BIKES_TABLE'])
 
+# Log table names for debugging
+logger.info(f"BOOKINGS_TABLE: {os.environ.get('BOOKINGS_TABLE')}")
+logger.info(f"BIKES_TABLE: {os.environ.get('BIKES_TABLE')}")
+
 def lambda_handler(event, context):
     logger.info(f"Received event: {json.dumps(event)}")
     method = event["requestContext"]["http"].get("method")
@@ -231,21 +235,34 @@ def get_available_vehicles(event):
         end_time = query_params.get('endTime')
         vehicle_type = query_params.get('type')
 
+        logger.info(f"Query parameters: date={date}, startTime={start_time}, endTime={end_time}, type={vehicle_type}")
+
         if not all([date, start_time, end_time]):
             return respond(400, {"error": "Missing required parameters: date, startTime, endTime"})
 
         # Get all bikes
-        bikes_response = bikes_table.scan()
-        all_bikes = bikes_response['Items']
+        try:
+            bikes_response = bikes_table.scan()
+            all_bikes = bikes_response['Items']
+            logger.info(f"Found {len(all_bikes)} total bikes")
+        except Exception as e:
+            logger.error(f"Error scanning bikes table: {str(e)}")
+            return respond(500, {"error": "Failed to retrieve vehicles"})
 
         # Filter by type if specified
         if vehicle_type:
             all_bikes = [bike for bike in all_bikes if bike.get('type') == vehicle_type]
+            logger.info(f"After type filter: {len(all_bikes)} bikes")
 
         # Get existing bookings for the date
-        bookings_response = bookings_table.scan()
-        existing_bookings = [booking for booking in bookings_response['Items'] 
-                           if booking['bookingDate'] == date and booking['status'] == 'confirmed']
+        try:
+            bookings_response = bookings_table.scan()
+            existing_bookings = [booking for booking in bookings_response['Items'] 
+                               if booking['bookingDate'] == date and booking['status'] == 'confirmed']
+            logger.info(f"Found {len(existing_bookings)} existing bookings for date {date}")
+        except Exception as e:
+            logger.error(f"Error scanning bookings table: {str(e)}")
+            return respond(500, {"error": "Failed to check availability"})
 
         # Find available bikes
         available_bikes = []
@@ -258,6 +275,7 @@ def get_available_vehicles(event):
                     start_time < booking['endTime'] and 
                     end_time > booking['startTime']):
                     is_available = False
+                    logger.info(f"Bike {bike['bikeId']} not available due to conflict with booking {booking['bookingId']}")
                     break
             
             if is_available:
@@ -277,7 +295,7 @@ def get_available_vehicles(event):
         })
         
     except Exception as e:
-        logger.error(f"Error getting available vehicles: {str(e)}")
+        logger.error(f"Error getting available vehicles: {str(e)}", exc_info=True)
         return respond(500, {"error": "Failed to get available vehicles"})
 
 def respond(status, body):
