@@ -79,8 +79,23 @@ def lambda_handler(event, context):
     
     try:
         # Extract user info from JWT
-        user_id = event['requestContext']['authorizer']['jwt']['claims']['sub']
-        user_email = event['requestContext']['authorizer']['jwt']['claims']['email']
+        # Handle different JWT claim structures
+        authorizer = event.get('requestContext', {}).get('authorizer', {})
+        jwt_claims = authorizer.get('jwt', {}).get('claims', {})
+        
+        if not jwt_claims:
+            # Try alternative structure
+            jwt_claims = authorizer.get('claims', {})
+        
+        user_id = jwt_claims.get('sub')
+        user_email = jwt_claims.get('email')
+        
+        if not user_id or not user_email:
+            logger.error(f"Missing user info in JWT claims: {jwt_claims}")
+            return {
+                'statusCode': 401,
+                'body': json.dumps({'error': 'Invalid or missing user authentication'})
+            }
         
         # Parse request body
         body = json.loads(event['body'])

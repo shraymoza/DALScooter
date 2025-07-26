@@ -220,23 +220,42 @@ resource "aws_apigatewayv2_integration" "get_available_vehicles_integration" {
   payload_format_version = "2.0"
 }
 
+# Cognito Authorizer for JWT
+resource "aws_apigatewayv2_authorizer" "cognito_auth" {
+  name          = "BookingCognitoAuthorizer"
+  api_id        = aws_apigatewayv2_api.booking_api.id
+  authorizer_type = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+
+  jwt_configuration {
+    audience = [var.cognito_user_pool_client_id]
+    issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${var.cognito_user_pool_id}"
+  }
+}
+
 # API Gateway Routes
 resource "aws_apigatewayv2_route" "create_booking_route" {
   api_id    = aws_apigatewayv2_api.booking_api.id
   route_key = "POST /bookings"
   target    = "integrations/${aws_apigatewayv2_integration.create_booking_integration.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito_auth.id
 }
 
 resource "aws_apigatewayv2_route" "get_user_bookings_route" {
   api_id    = aws_apigatewayv2_api.booking_api.id
   route_key = "GET /bookings"
   target    = "integrations/${aws_apigatewayv2_integration.get_user_bookings_integration.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito_auth.id
 }
 
 resource "aws_apigatewayv2_route" "cancel_booking_route" {
   api_id    = aws_apigatewayv2_api.booking_api.id
   route_key = "DELETE /bookings/{bookingId}"
   target    = "integrations/${aws_apigatewayv2_integration.cancel_booking_integration.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito_auth.id
 }
 
 resource "aws_apigatewayv2_route" "get_available_vehicles_route" {

@@ -49,4 +49,6 @@ module "message_module" {
 module "booking_module" {
   source                        = "../booking-module/terraform"
   aws_region                    = var.aws_region
+  cognito_user_pool_id          = module.auth_module.user_pool_id
+  cognito_user_pool_client_id   = module.auth_module.user_pool_client_id
 }
