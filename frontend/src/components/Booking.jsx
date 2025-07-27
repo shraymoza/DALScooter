@@ -109,6 +109,10 @@ export default function Booking() {
     setMessage("")
 
     try {
+      // Debug logging
+      console.log("BOOKING_API:", BOOKING_API)
+      console.log("Token:", token ? "Present" : "Missing")
+      
       // Create ISO datetime strings
       const startDateTime = `${selectedDate}T${startTime}:00.000Z`
       const endDateTime = `${selectedDate}T${endTime}:00.000Z`
@@ -121,6 +125,8 @@ export default function Booking() {
         notes: notes
       }
 
+      console.log("Booking data:", bookingData)
+
       const response = await fetch(`${BOOKING_API}/bookings`, {
         method: 'POST',
         headers: {
@@ -130,7 +136,9 @@ export default function Booking() {
         body: JSON.stringify(bookingData)
       })
 
+      console.log("Response status:", response.status)
       const result = await response.json()
+      console.log("Response result:", result)
 
       if (response.ok) {
         setMessage("Booking created successfully! You will receive a confirmation email shortly.")

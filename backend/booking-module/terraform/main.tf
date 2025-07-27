@@ -92,6 +92,7 @@ resource "aws_lambda_function" "create_booking_lambda" {
   runtime       = "python3.11"
   role          = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
   timeout       = 60
+  source_code_hash = data.archive_file.create_booking_zip.output_base64sha256
 
   environment {
     variables = {
@@ -101,6 +102,11 @@ resource "aws_lambda_function" "create_booking_lambda" {
   }
 
   depends_on = [data.archive_file.create_booking_zip]
+  
+  # Force update when source code changes
+  tags = {
+    LastModified = timestamp()
+  }
 }
 
 resource "aws_lambda_function" "get_bookings_lambda" {

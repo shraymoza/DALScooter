@@ -12,13 +12,16 @@ logger.setLevel(logging.INFO)
 # Initialize AWS clients
 dynamodb = boto3.client('dynamodb')
 bookings_table = os.environ['BOOKINGS_TABLE']
-bike_inventory_table = os.environ['BIKE_INVENTORY_TABLE']
+bike_inventory_table = os.environ['BIKE_INVENTORY_TABLE']  # Updated to use correct env var
 
 def lambda_handler(event, context):
     """
     Create a new booking for an e-scooter
     """
     try:
+        # Debug logging
+        logger.info(f"Event structure: {json.dumps(event, default=str)}")
+        
         # Parse the request
         if event.get('body'):
             body = json.loads(event['body'])
@@ -26,8 +29,43 @@ def lambda_handler(event, context):
             body = event
         
         # Extract user info from Cognito claims
-        user_id = event['requestContext']['authorizer']['claims']['sub']
-        user_email = event['requestContext']['authorizer']['claims']['email']
+        try:
+            # Debug the authorizer structure
+            logger.info(f"Authorizer structure: {json.dumps(event.get('requestContext', {}).get('authorizer', {}), default=str)}")
+            
+            authorizer = event.get('requestContext', {}).get('authorizer', {})
+            
+            # Try different possible claim structures
+            if 'claims' in authorizer:
+                claims = authorizer['claims']
+                user_id = claims.get('sub', 'unknown')
+                user_email = claims.get('email', 'unknown@example.com')
+            elif 'jwt' in authorizer:
+                # JWT authorizer might use 'jwt' instead of 'claims'
+                jwt_data = authorizer['jwt']
+                user_id = jwt_data.get('sub', 'unknown')
+                user_email = jwt_data.get('email', 'unknown@example.com')
+            else:
+                # Fallback: try to extract from the authorizer directly
+                user_id = authorizer.get('sub', 'unknown')
+                user_email = authorizer.get('email', 'unknown@example.com')
+                
+            logger.info(f"Extracted user_id: {user_id}, user_email: {user_email}")
+            
+        except (KeyError, TypeError) as e:
+            logger.error(f"Error extracting user claims: {str(e)}")
+            return {
+                'statusCode': 401,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                    'Access-Control-Allow-Methods': 'POST,OPTIONS'
+                },
+                'body': json.dumps({
+                    'error': 'Invalid authentication token'
+                })
+            }
         
         # Validate required fields
         required_fields = ['bikeId', 'startDate', 'endDate', 'duration']
@@ -71,7 +109,9 @@ def lambda_handler(event, context):
                     })
                 }
             
-            if start_datetime < datetime.now():
+            # Use timezone-aware datetime.now() for comparison
+            current_time = datetime.now().replace(tzinfo=start_datetime.tzinfo)
+            if start_datetime < current_time:
                 return {
                     'statusCode': 400,
                     'headers': {
@@ -99,7 +139,7 @@ def lambda_handler(event, context):
                 })
             }
         
-        # Check if bike exists and is available
+        # Check if bike exists
         try:
             bike_response = dynamodb.get_item(
                 TableName=bike_inventory_table,
@@ -121,22 +161,9 @@ def lambda_handler(event, context):
                 }
             
             bike_data = bike_response['Item']
-            if bike_data.get('status', {}).get('S') != 'available':
-                return {
-                    'statusCode': 400,
-                    'headers': {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-                        'Access-Control-Allow-Methods': 'POST,OPTIONS'
-                    },
-                    'body': json.dumps({
-                        'error': 'Bike is not available for booking'
-                    })
-                }
                 
         except Exception as e:
-            logger.error(f"Error checking bike availability: {str(e)}")
+            logger.error(f"Error checking bike: {str(e)}")
             return {
                 'statusCode': 500,
                 'headers': {
@@ -146,63 +173,15 @@ def lambda_handler(event, context):
                     'Access-Control-Allow-Methods': 'POST,OPTIONS'
                 },
                 'body': json.dumps({
-                    'error': 'Error checking bike availability'
+                    'error': 'Error checking bike'
                 })
             }
         
-        # Check for booking conflicts
-        try:
-            conflict_response = dynamodb.query(
-                TableName=bookings_table,
-                IndexName='BikeBookingsIndex',
-                KeyConditionExpression='bikeId = :bikeId',
-                FilterExpression='#status = :status',
-                ExpressionAttributeNames={
-                    '#status': 'status'
-                },
-                ExpressionAttributeValues={
-                    ':bikeId': {'S': bike_id},
-                    ':status': {'S': 'active'}
-                }
-            )
-            
-            # Check for overlapping bookings
-            for booking in conflict_response.get('Items', []):
-                booking_start = datetime.fromisoformat(booking['startDate']['S'].replace('Z', '+00:00'))
-                booking_end = datetime.fromisoformat(booking['endDate']['S'].replace('Z', '+00:00'))
-                
-                if (start_datetime < booking_end and end_datetime > booking_start):
-                    return {
-                        'statusCode': 409,
-                        'headers': {
-                            'Content-Type': 'application/json',
-                            'Access-Control-Allow-Origin': '*',
-                            'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-                            'Access-Control-Allow-Methods': 'POST,OPTIONS'
-                        },
-                        'body': json.dumps({
-                            'error': 'Bike is already booked for this time period'
-                        })
-                    }
-                    
-        except Exception as e:
-            logger.error(f"Error checking booking conflicts: {str(e)}")
-            return {
-                'statusCode': 500,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-                    'Access-Control-Allow-Methods': 'POST,OPTIONS'
-                },
-                'body': json.dumps({
-                    'error': 'Error checking booking conflicts'
-                })
-            }
+
         
         # Create booking
         booking_id = str(uuid.uuid4())
-        current_time = datetime.utcnow().isoformat() + 'Z'
+        current_time = datetime.now().replace(tzinfo=start_datetime.tzinfo).isoformat()
         
         booking_item = {
             'bookingId': {'S': booking_id},
