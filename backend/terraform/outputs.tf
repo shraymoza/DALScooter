@@ -33,3 +33,7 @@ output "feedback_table_name" {
 output "complaint_api_endpoint" {
   value = module.message_module.complaint_api_endpoint
 }
+
+output "booking_api_endpoint" {
+  value = module.booking_module.booking_api_gateway_endpoint
+}

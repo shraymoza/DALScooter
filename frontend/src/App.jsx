@@ -13,6 +13,8 @@ import VirtualAssistant from "./components/VirtualAssistant"
 import AdminDashboard from "./components/AdminDashboard"
 import Vehicles from "./components/Vehicles"
 import Complaints from "./components/Complaints"
+import MyBookings from "./components/MyBookings"
+import AdminBookings from "./components/AdminBookings"
 import { getUserGroup } from "./utils/auth"
 
 export default function App() {
@@ -40,9 +42,11 @@ export default function App() {
         />
         <Route path="/vehicles" element={<Vehicles />} />
         <Route path="/booking" element={<Booking />} />
+        <Route path="/my-bookings" element={<MyBookings />} />
         <Route path="/feedback" element={<Feedback />} />
         <Route path="/franchise" element={<FranchiseManagement />} />
         <Route path="/admin" element={<AdminAnalytics />} />
+        <Route path="/admin-bookings" element={<AdminBookings />} />
         <Route path="/complaints" element={<Complaints />} />
       </Routes>
       {!hideVirtualAssistant && <VirtualAssistant />}

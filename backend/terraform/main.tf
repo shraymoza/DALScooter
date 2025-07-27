@@ -19,6 +19,7 @@ module "amplify_deploy" {
   bike_crud_api             = module.bike_module.bike_api_gateway_endpoint
   feedback_api              = module.feedback_module.feedback_api_endpoint
   complaint_api             = module.message_module.complaint_api_endpoint
+  booking_api               = module.booking_module.booking_api_gateway_endpoint
 }
 
 # Bike Module (Admin & Guest CRUD access)
@@ -39,6 +40,14 @@ module "feedback_module" {
 
 module "message_module" {
   source                        = "../message-module/terraform"
+  aws_region                    = var.aws_region
+  cognito_user_pool_id          = module.auth_module.user_pool_id
+  cognito_user_pool_client_id   = module.auth_module.user_pool_client_id
+}
+
+# Booking Module
+module "booking_module" {
+  source                        = "../booking-module/terraform"
   aws_region                    = var.aws_region
   cognito_user_pool_id          = module.auth_module.user_pool_id
   cognito_user_pool_client_id   = module.auth_module.user_pool_client_id

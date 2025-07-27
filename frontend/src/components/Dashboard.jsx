@@ -50,6 +50,13 @@ export default function Dashboard() {
       color: "from-blue-500 to-cyan-400",
     },
     {
+      title: "My Bookings",
+      description: "View and manage your reservations",
+      icon: Calendar,
+      link: "/my-bookings",
+      color: "from-green-500 to-emerald-400",
+    },
+    {
       title: "Give Feedback",
       description: "Rate your experience and provide feedback",
       icon: Star,

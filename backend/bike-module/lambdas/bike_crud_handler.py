@@ -65,6 +65,7 @@ def create_bike(body):
             "hourlyRate": Decimal(str(body.get("hourlyRate", "0"))),
             "discount": body.get("discount", ""),
             "features": body.get("features", []),
+            "status": body.get("status", "available"),  # Default status to available
             "createdBy": body.get("createdBy"),
             "createdAt": body.get("createdAt")
         }

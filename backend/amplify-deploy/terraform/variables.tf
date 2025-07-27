@@ -38,3 +38,8 @@ variable "complaint_api" {
   description = "Complaint CRUD API"
   type        = string
 }
+
+variable "booking_api" {
+  description = "Booking CRUD API"
+  type        = string
+}

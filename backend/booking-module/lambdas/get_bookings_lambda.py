@@ -1,0 +1,172 @@
+import json
+import boto3
+import os
+from datetime import datetime
+import logging
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Initialize AWS clients
+dynamodb = boto3.client('dynamodb')
+bookings_table = os.environ['BOOKINGS_TABLE']
+
+def lambda_handler(event, context):
+    """
+    Get bookings for a user with optional filtering
+    """
+    try:
+        # Extract user info from Cognito claims
+        user_id = event['requestContext']['authorizer']['claims']['sub']
+        user_email = event['requestContext']['authorizer']['claims']['email']
+        
+        # Check if user is admin (BikeFranchise group)
+        user_groups = event['requestContext']['authorizer']['claims'].get('cognito:groups', '')
+        is_admin = 'BikeFranchise' in user_groups
+        
+        # Parse query parameters
+        query_params = event.get('queryStringParameters', {}) or {}
+        status_filter = query_params.get('status')
+        date_filter = query_params.get('date')
+        limit = int(query_params.get('limit', 50))
+        
+        # Build query parameters
+        query_params_dynamo = {
+            'TableName': bookings_table,
+            'IndexName': 'UserBookingsIndex',
+            'KeyConditionExpression': 'userId = :userId',
+            'ExpressionAttributeValues': {
+                ':userId': {'S': user_id}
+            },
+            'ScanIndexForward': False,  # Most recent first
+            'Limit': limit
+        }
+        
+        # Add status filter if provided
+        if status_filter:
+            query_params_dynamo['FilterExpression'] = '#status = :status'
+            query_params_dynamo['ExpressionAttributeNames'] = {
+                '#status': 'status'
+            }
+            query_params_dynamo['ExpressionAttributeValues'][':status'] = {'S': status_filter}
+        
+        # Add date filter if provided
+        if date_filter:
+            if 'FilterExpression' in query_params_dynamo:
+                query_params_dynamo['FilterExpression'] += ' AND begins_with(bookingDate, :date)'
+            else:
+                query_params_dynamo['FilterExpression'] = 'begins_with(bookingDate, :date)'
+            
+            if 'ExpressionAttributeNames' not in query_params_dynamo:
+                query_params_dynamo['ExpressionAttributeNames'] = {}
+            
+            query_params_dynamo['ExpressionAttributeValues'][':date'] = {'S': date_filter}
+        
+        # If admin, get all bookings instead of user-specific
+        if is_admin:
+            # Remove user-specific query and use scan instead
+            scan_params = {
+                'TableName': bookings_table,
+                'Limit': limit
+            }
+            
+            if status_filter:
+                scan_params['FilterExpression'] = '#status = :status'
+                scan_params['ExpressionAttributeNames'] = {
+                    '#status': 'status'
+                }
+                scan_params['ExpressionAttributeValues'] = {
+                    ':status': {'S': status_filter}
+                }
+            
+            try:
+                response = dynamodb.scan(**scan_params)
+            except Exception as e:
+                logger.error(f"Error scanning bookings for admin: {str(e)}")
+                return {
+                    'statusCode': 500,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                        'Access-Control-Allow-Methods': 'GET,OPTIONS'
+                    },
+                    'body': json.dumps({
+                        'error': 'Error retrieving bookings'
+                    })
+                }
+        else:
+            # Regular user query
+            try:
+                response = dynamodb.query(**query_params_dynamo)
+            except Exception as e:
+                logger.error(f"Error querying bookings: {str(e)}")
+                return {
+                    'statusCode': 500,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                        'Access-Control-Allow-Methods': 'GET,OPTIONS'
+                    },
+                    'body': json.dumps({
+                        'error': 'Error retrieving bookings'
+                    })
+                }
+        
+        # Process and format bookings
+        bookings = []
+        for item in response.get('Items', []):
+            booking = {
+                'bookingId': item['bookingId']['S'],
+                'userId': item['userId']['S'],
+                'userEmail': item.get('userEmail', {}).get('S', ''),
+                'bikeId': item['bikeId']['S'],
+                'startDate': item['startDate']['S'],
+                'endDate': item['endDate']['S'],
+                'duration': int(item['duration']['N']),
+                'status': item['status']['S'],
+                'notes': item.get('notes', {}).get('S', ''),
+                'createdAt': item['createdAt']['S'],
+                'updatedAt': item.get('updatedAt', {}).get('S', ''),
+                'bikeModel': item.get('bikeModel', {}).get('S', 'Unknown'),
+                'bikeType': item.get('bikeType', {}).get('S', 'Unknown')
+            }
+            bookings.append(booking)
+        
+        # Sort bookings by creation date (newest first)
+        bookings.sort(key=lambda x: x['createdAt'], reverse=True)
+        
+        logger.info(f"Retrieved {len(bookings)} bookings for user {user_id}")
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                'Access-Control-Allow-Methods': 'GET,OPTIONS'
+            },
+            'body': json.dumps({
+                'bookings': bookings,
+                'count': len(bookings),
+                'userEmail': user_email,
+                'isAdmin': is_admin
+            })
+        }
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in get_bookings_lambda: {str(e)}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                'Access-Control-Allow-Methods': 'GET,OPTIONS'
+            },
+            'body': json.dumps({
+                'error': 'Internal server error'
+            })
+        } 

@@ -74,10 +74,10 @@ export default function AdminDashboard() {
       iconBg: "bg-purple-500",
     },
     {
-      title: "Booking Overview",
+      title: "Booking Management",
       description: "Monitor all bookings and reservations",
       icon: Calendar,
-      link: "/booking",
+      link: "/admin-bookings",
       gradient: "from-orange-600 to-orange-800",
       bgGradient: "from-orange-50 to-orange-100",
       iconBg: "bg-orange-500",
