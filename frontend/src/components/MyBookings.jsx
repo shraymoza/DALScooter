@@ -29,7 +29,9 @@ export default function MyBookings() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editForm, setEditForm] = useState({
     startDate: "",
+    startTime: "",
     endDate: "",
+    endTime: "",
     duration: 1,
     notes: ""
   })
@@ -96,13 +98,26 @@ export default function MyBookings() {
     e.preventDefault()
     
     try {
+      // Create proper ISO datetime strings with timezone handling
+      // Convert local time to UTC for storage
+      // Use same date for both start and end
+      const startDateTime = new Date(`${editForm.startDate}T${editForm.startTime}:00Z`).toISOString()
+      const endDateTime = new Date(`${editForm.startDate}T${editForm.endTime}:00Z`).toISOString()
+      
+      const updateData = {
+        startDate: startDateTime,
+        endDate: endDateTime,
+        duration: calculateDuration(),
+        notes: editForm.notes
+      }
+      
       const response = await fetch(`${BOOKING_API}/bookings/${selectedBooking.bookingId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(editForm)
+        body: JSON.stringify(updateData)
       })
 
       if (response.ok) {
@@ -124,13 +139,40 @@ export default function MyBookings() {
 
   const openEditModal = (booking) => {
     setSelectedBooking(booking)
+    
+    // Extract date and time from ISO strings
+    const startDateTime = new Date(booking.startDate)
+    const endDateTime = new Date(booking.endDate)
+    
+    // Format time as HH:MM in UTC to match database storage
+    const formatTime = (date) => {
+      return date.toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit',
+        timeZone: 'UTC'
+      })
+    }
+    
     setEditForm({
-      startDate: booking.startDate.split('T')[0],
-      endDate: booking.endDate.split('T')[0],
+      startDate: startDateTime.toISOString().split('T')[0],
+      startTime: formatTime(startDateTime),
+      endTime: formatTime(endDateTime),
       duration: booking.duration,
       notes: booking.notes || ""
     })
     setShowEditModal(true)
+  }
+
+  // Calculate duration based on start and end times
+  const calculateDuration = () => {
+    if (editForm.startDate && editForm.startTime && editForm.endTime) {
+      const startDateTime = new Date(`${editForm.startDate}T${editForm.startTime}:00`)
+      const endDateTime = new Date(`${editForm.startDate}T${editForm.endTime}:00`)
+      const diffHours = (endDateTime - startDateTime) / (1000 * 60 * 60)
+      return Math.max(1, Math.ceil(diffHours))
+    }
+    return editForm.duration
   }
 
   const getBookingStatus = (booking) => {
@@ -185,9 +227,11 @@ export default function MyBookings() {
 
   const formatTime = (dateString) => {
     const date = new Date(dateString)
+    // Use UTC time to avoid timezone conversion issues
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'UTC'
     })
   }
 
@@ -489,6 +533,20 @@ export default function MyBookings() {
               </div>
 
               <form onSubmit={handleEditBooking} className="space-y-6">
+                {/* Vehicle at the top */}
+                <div>
+                  <label className="block text-sm font-semibold text-slate-800 mb-2">
+                    Vehicle
+                  </label>
+                  <input
+                    type="text"
+                    value={`${selectedBooking.bikeModel} - ${selectedBooking.bikeType}`}
+                    disabled
+                    className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-slate-100 text-slate-600"
+                  />
+                </div>
+
+                {/* Date and Duration fields in 2-column layout */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-slate-800 mb-2">
@@ -505,43 +563,41 @@ export default function MyBookings() {
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-800 mb-2">
-                      End Date
+                      Duration (Auto-calculated)
                     </label>
                     <input
-                      type="date"
-                      value={editForm.endDate}
-                      onChange={(e) => setEditForm({...editForm, endDate: e.target.value})}
-                      min={editForm.startDate}
-                      className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-white transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none"
-                      required
+                      type="text"
+                      value={`${calculateDuration()} hour${calculateDuration() !== 1 ? 's' : ''}`}
+                      disabled
+                      className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-slate-100 text-slate-600"
                     />
                   </div>
                 </div>
 
+                {/* Start and End Time fields in 2-column layout */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-slate-800 mb-2">
-                      Duration (hours)
+                      Start Time
                     </label>
                     <input
-                      type="number"
-                      value={editForm.duration}
-                      onChange={(e) => setEditForm({...editForm, duration: parseInt(e.target.value)})}
-                      min="1"
-                      max="24"
+                      type="time"
+                      value={editForm.startTime}
+                      onChange={(e) => setEditForm({...editForm, startTime: e.target.value})}
                       className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-white transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none"
                       required
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-800 mb-2">
-                      Vehicle
+                      End Time
                     </label>
                     <input
-                      type="text"
-                      value={`${selectedBooking.bikeModel} - ${selectedBooking.bikeType}`}
-                      disabled
-                      className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-slate-100 text-slate-600"
+                      type="time"
+                      value={editForm.endTime}
+                      onChange={(e) => setEditForm({...editForm, endTime: e.target.value})}
+                      className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-white transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none"
+                      required
                     />
                   </div>
                 </div>
