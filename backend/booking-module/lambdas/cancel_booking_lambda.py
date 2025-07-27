@@ -18,11 +18,41 @@ def lambda_handler(event, context):
     """
     try:
         # Extract user info from Cognito claims
-        user_id = event['requestContext']['authorizer']['claims']['sub']
-        user_email = event['requestContext']['authorizer']['claims']['email']
+        try:
+            authorizer = event.get('requestContext', {}).get('authorizer', {})
+            
+            # Try different possible claim structures
+            if 'claims' in authorizer:
+                claims = authorizer['claims']
+                user_id = claims.get('sub', 'unknown')
+                user_email = claims.get('email', 'unknown@example.com')
+                user_groups = claims.get('cognito:groups', '')
+            elif 'jwt' in authorizer:
+                jwt_data = authorizer['jwt']
+                user_id = jwt_data.get('sub', 'unknown')
+                user_email = jwt_data.get('email', 'unknown@example.com')
+                user_groups = jwt_data.get('cognito:groups', '')
+            else:
+                user_id = authorizer.get('sub', 'unknown')
+                user_email = authorizer.get('email', 'unknown@example.com')
+                user_groups = authorizer.get('cognito:groups', '')
+                
+        except (KeyError, TypeError) as e:
+            logger.error(f"Error extracting user claims: {str(e)}")
+            return {
+                'statusCode': 401,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                    'Access-Control-Allow-Methods': 'DELETE,OPTIONS'
+                },
+                'body': json.dumps({
+                    'error': 'Invalid authentication token'
+                })
+            }
         
         # Check if user is admin (BikeFranchise group)
-        user_groups = event['requestContext']['authorizer']['claims'].get('cognito:groups', '')
         is_admin = 'BikeFranchise' in user_groups
         
         # Get booking ID from path parameters
@@ -115,7 +145,9 @@ def lambda_handler(event, context):
             start_date = existing_booking['startDate']['S']
             try:
                 start_datetime = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                if start_datetime < datetime.now():
+                # Use timezone-aware datetime.now() for comparison
+                current_time = datetime.now().replace(tzinfo=start_datetime.tzinfo)
+                if start_datetime < current_time:
                     return {
                         'statusCode': 400,
                         'headers': {

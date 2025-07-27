@@ -26,6 +26,13 @@ export default function MyBookings() {
   const [filter, setFilter] = useState("all") // all, active, upcoming, past, cancelled
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [showDetails, setShowDetails] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editForm, setEditForm] = useState({
+    startDate: "",
+    endDate: "",
+    duration: 1,
+    notes: ""
+  })
   
   const BOOKING_API = import.meta.env.VITE_BOOKING_API
   const token = localStorage.getItem("token")
@@ -83,6 +90,47 @@ export default function MyBookings() {
       setMessage("Network error. Please try again.")
       setMessageType("error")
     }
+  }
+
+  const handleEditBooking = async (e) => {
+    e.preventDefault()
+    
+    try {
+      const response = await fetch(`${BOOKING_API}/bookings/${selectedBooking.bookingId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(editForm)
+      })
+
+      if (response.ok) {
+        setMessage("Booking updated successfully!")
+        setMessageType("success")
+        setShowEditModal(false)
+        fetchBookings() // Refresh the list
+      } else {
+        const result = await response.json()
+        setMessage(result.error || "Failed to update booking")
+        setMessageType("error")
+      }
+    } catch (error) {
+      console.error("Error updating booking:", error)
+      setMessage("Network error. Please try again.")
+      setMessageType("error")
+    }
+  }
+
+  const openEditModal = (booking) => {
+    setSelectedBooking(booking)
+    setEditForm({
+      startDate: booking.startDate.split('T')[0],
+      endDate: booking.endDate.split('T')[0],
+      duration: booking.duration,
+      notes: booking.notes || ""
+    })
+    setShowEditModal(true)
   }
 
   const getBookingStatus = (booking) => {
@@ -299,10 +347,7 @@ export default function MyBookings() {
                         {status === 'upcoming' && (
                           <>
                             <button
-                              onClick={() => {
-                                setSelectedBooking(booking)
-                                // TODO: Implement edit functionality
-                              }}
+                              onClick={() => openEditModal(booking)}
                               className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
                               title="Edit Booking"
                             >
@@ -423,6 +468,113 @@ export default function MyBookings() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Booking Modal */}
+      {showEditModal && selectedBooking && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-slate-800">Edit Booking</h2>
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors duration-200"
+                >
+                  <XCircle className="h-6 w-6 text-slate-600" />
+                </button>
+              </div>
+
+              <form onSubmit={handleEditBooking} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2">
+                      Start Date
+                    </label>
+                    <input
+                      type="date"
+                      value={editForm.startDate}
+                      onChange={(e) => setEditForm({...editForm, startDate: e.target.value})}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-white transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2">
+                      End Date
+                    </label>
+                    <input
+                      type="date"
+                      value={editForm.endDate}
+                      onChange={(e) => setEditForm({...editForm, endDate: e.target.value})}
+                      min={editForm.startDate}
+                      className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-white transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2">
+                      Duration (hours)
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.duration}
+                      onChange={(e) => setEditForm({...editForm, duration: parseInt(e.target.value)})}
+                      min="1"
+                      max="24"
+                      className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-white transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2">
+                      Vehicle
+                    </label>
+                    <input
+                      type="text"
+                      value={`${selectedBooking.bikeModel} - ${selectedBooking.bikeType}`}
+                      disabled
+                      className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-slate-100 text-slate-600"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-800 mb-2">
+                    Notes (Optional)
+                  </label>
+                  <textarea
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm({...editForm, notes: e.target.value})}
+                    rows="3"
+                    className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg bg-white transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none"
+                    placeholder="Any special requests or notes..."
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="px-6 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-all duration-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200"
+                  >
+                    Update Booking
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
