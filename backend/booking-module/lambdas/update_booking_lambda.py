@@ -27,21 +27,40 @@ def lambda_handler(event, context):
         try:
             authorizer = event.get('requestContext', {}).get('authorizer', {})
             
-            # Try different possible claim structures
-            if 'claims' in authorizer:
+            # For API Gateway v2 with JWT authorizer, claims are directly in the authorizer
+            # The structure is: authorizer.jwt.claims
+            if 'jwt' in authorizer and 'claims' in authorizer['jwt']:
+                claims = authorizer['jwt']['claims']
+                user_id = claims.get('sub', 'unknown')
+                user_email = claims.get('email', 'unknown@example.com')
+                user_groups = claims.get('cognito:groups', '')
+            elif 'claims' in authorizer:
+                # Fallback for different authorizer structure
                 claims = authorizer['claims']
                 user_id = claims.get('sub', 'unknown')
                 user_email = claims.get('email', 'unknown@example.com')
                 user_groups = claims.get('cognito:groups', '')
-            elif 'jwt' in authorizer:
-                jwt_data = authorizer['jwt']
-                user_id = jwt_data.get('sub', 'unknown')
-                user_email = jwt_data.get('email', 'unknown@example.com')
-                user_groups = jwt_data.get('cognito:groups', '')
             else:
+                # Last resort: try to extract from authorizer directly
                 user_id = authorizer.get('sub', 'unknown')
                 user_email = authorizer.get('email', 'unknown@example.com')
                 user_groups = authorizer.get('cognito:groups', '')
+                
+            # Validate that we got a real user ID
+            if user_id == 'unknown':
+                logger.error("Failed to extract user ID from JWT claims")
+                return {
+                    'statusCode': 401,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                        'Access-Control-Allow-Methods': 'PUT,OPTIONS'
+                    },
+                    'body': json.dumps({
+                        'error': 'Invalid authentication token - user ID not found'
+                    })
+                }
                 
         except (KeyError, TypeError) as e:
             logger.error(f"Error extracting user claims: {str(e)}")

@@ -37,23 +37,41 @@ def lambda_handler(event, context):
             
             authorizer = event.get('requestContext', {}).get('authorizer', {})
             
-            # Try different possible claim structures
-            if 'claims' in authorizer:
+            # For API Gateway v2 with JWT authorizer, claims are directly in the authorizer
+            # The structure is: authorizer.jwt.claims
+            if 'jwt' in authorizer and 'claims' in authorizer['jwt']:
+                claims = authorizer['jwt']['claims']
+                user_id = claims.get('sub', 'unknown')
+                user_email = claims.get('email', 'unknown@example.com')
+                logger.info(f"Extracted from jwt.claims - user_id: {user_id}, user_email: {user_email}")
+            elif 'claims' in authorizer:
+                # Fallback for different authorizer structure
                 claims = authorizer['claims']
                 user_id = claims.get('sub', 'unknown')
                 user_email = claims.get('email', 'unknown@example.com')
-            elif 'jwt' in authorizer:
-                # JWT authorizer might use 'jwt' instead of 'claims'
-                jwt_claims = authorizer['jwt'].get('claims', {})
-                user_id = jwt_claims.get('sub', 'unknown')
-                user_email = jwt_claims.get('email', 'unknown@example.com')
+                logger.info(f"Extracted from claims - user_id: {user_id}, user_email: {user_email}")
             else:
-                # Fallback: try to extract from the authorizer directly
+                # Last resort: try to extract from authorizer directly
                 user_id = authorizer.get('sub', 'unknown')
                 user_email = authorizer.get('email', 'unknown@example.com')
+                logger.info(f"Extracted from authorizer directly - user_id: {user_id}, user_email: {user_email}")
                 
-            logger.info(f"Extracted user_id: {user_id}, user_email: {user_email}")
-            
+            # Validate that we got a real user ID
+            if user_id == 'unknown':
+                logger.error("Failed to extract user ID from JWT claims")
+                return {
+                    'statusCode': 401,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                        'Access-Control-Allow-Methods': 'POST,OPTIONS'
+                    },
+                    'body': json.dumps({
+                        'error': 'Invalid authentication token - user ID not found'
+                    })
+                }
+                
         except (KeyError, TypeError) as e:
             logger.error(f"Error extracting user claims: {str(e)}")
             return {

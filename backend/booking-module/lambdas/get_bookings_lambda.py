@@ -15,35 +15,54 @@ bookings_table = os.environ['BOOKINGS_TABLE']
 def lambda_handler(event, context):
     """
     Get bookings for a user with optional filtering
-    Version: 2.0 - Fixed claims extraction
+    Version: 3.0 - Fixed JWT claims extraction for API Gateway v2
     """
     try:
         # Extract user info from Cognito claims
         try:
             # Debug the authorizer structure
-            logger.info(f"Authorizer structure: {json.dumps(event.get('requestContext', {}).get('authorizer', {}), default=str)}")
+            logger.info(f"Full event structure: {json.dumps(event, default=str)}")
             
             authorizer = event.get('requestContext', {}).get('authorizer', {})
+            logger.info(f"Authorizer structure: {json.dumps(authorizer, default=str)}")
             
-            # Try different possible claim structures
-            if 'claims' in authorizer:
+            # For API Gateway v2 with JWT authorizer, claims are directly in the authorizer
+            # The structure is: authorizer.jwt.claims
+            if 'jwt' in authorizer and 'claims' in authorizer['jwt']:
+                claims = authorizer['jwt']['claims']
+                user_id = claims.get('sub', 'unknown')
+                user_email = claims.get('email', 'unknown@example.com')
+                user_groups = claims.get('cognito:groups', '')
+                logger.info(f"Extracted from jwt.claims - user_id: {user_id}, user_email: {user_email}, groups: {user_groups}")
+            elif 'claims' in authorizer:
+                # Fallback for different authorizer structure
                 claims = authorizer['claims']
                 user_id = claims.get('sub', 'unknown')
                 user_email = claims.get('email', 'unknown@example.com')
                 user_groups = claims.get('cognito:groups', '')
-            elif 'jwt' in authorizer:
-                # JWT authorizer might use 'jwt' instead of 'claims'
-                jwt_data = authorizer['jwt']
-                user_id = jwt_data.get('sub', 'unknown')
-                user_email = jwt_data.get('email', 'unknown@example.com')
-                user_groups = jwt_data.get('cognito:groups', '')
+                logger.info(f"Extracted from claims - user_id: {user_id}, user_email: {user_email}, groups: {user_groups}")
             else:
-                # Fallback: try to extract from the authorizer directly
+                # Last resort: try to extract from authorizer directly
                 user_id = authorizer.get('sub', 'unknown')
                 user_email = authorizer.get('email', 'unknown@example.com')
                 user_groups = authorizer.get('cognito:groups', '')
+                logger.info(f"Extracted from authorizer directly - user_id: {user_id}, user_email: {user_email}, groups: {user_groups}")
                 
-            logger.info(f"Extracted user_id: {user_id}, user_email: {user_email}, groups: {user_groups}")
+            # Validate that we got a real user ID
+            if user_id == 'unknown':
+                logger.error("Failed to extract user ID from JWT claims")
+                return {
+                    'statusCode': 401,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                        'Access-Control-Allow-Methods': 'GET,OPTIONS'
+                    },
+                    'body': json.dumps({
+                        'error': 'Invalid authentication token - user ID not found'
+                    })
+                }
             
         except (KeyError, TypeError) as e:
             logger.error(f"Error extracting user claims: {str(e)}")
