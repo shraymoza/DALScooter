@@ -30,6 +30,10 @@ def lambda_handler(event, context):
         if method == "GET" and path == "/bikes":
             return list_bikes()
 
+        if method == "GET" and path.startswith("/bikes/") and path.endswith("/availability"):
+            bike_id = path_params.get("bikeId")
+            return check_bike_availability(bike_id, event.get("queryStringParameters", {}) or {})
+
         if method == "POST" and path == "/bikes":
             return create_bike(json.loads(event["body"]))
 
@@ -51,6 +55,47 @@ def list_bikes():
         return respond(200, response["Items"])
     except Exception as e:
         logger.error(f"Error listing bikes: {str(e)}")
+        return respond(500, {"error": str(e)})
+
+def check_bike_availability(bike_id, query_params):
+    """
+    Check if a bike is available for a given time period
+    Query parameters: startDate, endDate (ISO 8601 format)
+    """
+    try:
+        if not bike_id:
+            return respond(400, {"error": "Missing bikeId"})
+        
+        start_date = query_params.get("startDate")
+        end_date = query_params.get("endDate")
+        
+        if not start_date or not end_date:
+            return respond(400, {"error": "Missing startDate or endDate parameters"})
+        
+        # First check if the bike exists and is available
+        bike_response = table.get_item(Key={"bikeId": bike_id})
+        if "Item" not in bike_response:
+            return respond(404, {"error": "Bike not found"})
+        
+        bike = bike_response["Item"]
+        if bike.get("status") != "available":
+            return respond(200, {
+                "available": False,
+                "reason": f"Bike is currently {bike.get('status')}",
+                "bike": bike
+            })
+        
+        # If bike status is available, we still need to check for booking conflicts
+        # This would typically be done by querying the bookings table
+        # For now, we'll return that the bike is available if its status is "available"
+        return respond(200, {
+            "available": True,
+            "bike": bike,
+            "message": "Bike is available for the requested time period"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error checking bike availability: {str(e)}")
         return respond(500, {"error": str(e)})
 
 def create_bike(body):

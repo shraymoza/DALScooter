@@ -217,6 +217,26 @@ def lambda_handler(event, context):
             
             logger.info(f"Booking {booking_id} cancelled successfully")
             
+            # Update bike status back to available
+            try:
+                bike_id = existing_booking['bikeId']['S']
+                dynamodb.update_item(
+                    TableName=bike_inventory_table,
+                    Key={'bikeId': {'S': bike_id}},
+                    UpdateExpression="SET #status = :status",
+                    ExpressionAttributeNames={
+                        '#status': 'status'
+                    },
+                    ExpressionAttributeValues={
+                        ':status': {'S': 'available'}
+                    }
+                )
+                logger.info(f"Bike {bike_id} status updated to available")
+            except Exception as e:
+                logger.error(f"Error updating bike status: {str(e)}")
+                # Don't fail the cancellation if bike status update fails
+                # The booking is already cancelled successfully
+            
             return {
                 'statusCode': 200,
                 'headers': {

@@ -181,6 +181,21 @@ def lambda_handler(event, context):
                 }
             
             bike_data = bike_response['Item']
+            
+            # Check if bike is available
+            if bike_data.get('status', {}).get('S', 'available') != 'available':
+                return {
+                    'statusCode': 409,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                        'Access-Control-Allow-Methods': 'POST,OPTIONS'
+                    },
+                    'body': json.dumps({
+                        'error': f'Bike is currently {bike_data.get("status", {}).get("S", "unavailable")}'
+                    })
+                }
                 
         except Exception as e:
             logger.error(f"Error checking bike: {str(e)}")
@@ -194,6 +209,62 @@ def lambda_handler(event, context):
                 },
                 'body': json.dumps({
                     'error': 'Error checking bike'
+                })
+            }
+        
+        # Check for booking conflicts (overlapping time periods)
+        try:
+            # Query existing bookings for this bike that overlap with the requested time period
+            # We need to check for any active bookings that overlap
+            conflict_query_params = {
+                'TableName': bookings_table,
+                'IndexName': 'BikeBookingsIndex',
+                'KeyConditionExpression': 'bikeId = :bikeId',
+                'FilterExpression': '#status = :status AND startDate <= :endDate AND endDate >= :startDate',
+                'ExpressionAttributeNames': {
+                    '#status': 'status'
+                },
+                'ExpressionAttributeValues': {
+                    ':bikeId': {'S': bike_id},
+                    ':status': {'S': 'active'},
+                    ':startDate': {'S': start_date},
+                    ':endDate': {'S': end_date}
+                }
+            }
+            
+            conflict_response = dynamodb.query(**conflict_query_params)
+            
+            if conflict_response.get('Items'):
+                conflicting_booking = conflict_response['Items'][0]
+                return {
+                    'statusCode': 409,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                        'Access-Control-Allow-Methods': 'POST,OPTIONS'
+                    },
+                    'body': json.dumps({
+                        'error': 'Bike is already booked for this time period',
+                        'conflictingBooking': {
+                            'startDate': conflicting_booking['startDate']['S'],
+                            'endDate': conflicting_booking['endDate']['S']
+                        }
+                    })
+                }
+                
+        except Exception as e:
+            logger.error(f"Error checking booking conflicts: {str(e)}")
+            return {
+                'statusCode': 500,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                    'Access-Control-Allow-Methods': 'POST,OPTIONS'
+                },
+                'body': json.dumps({
+                    'error': 'Error checking booking availability'
                 })
             }
         
@@ -229,6 +300,25 @@ def lambda_handler(event, context):
             )
             
             logger.info(f"Booking created successfully: {booking_id}")
+
+            # Update bike status to unavailable
+            try:
+                dynamodb.update_item(
+                    TableName=bike_inventory_table,
+                    Key={'bikeId': {'S': bike_id}},
+                    UpdateExpression="SET #status = :status",
+                    ExpressionAttributeNames={
+                        '#status': 'status'
+                    },
+                    ExpressionAttributeValues={
+                        ':status': {'S': 'unavailable'}
+                    }
+                )
+                logger.info(f"Bike {bike_id} status updated to unavailable")
+            except Exception as e:
+                logger.error(f"Error updating bike status: {str(e)}")
+                # Don't fail the booking creation if bike status update fails
+                # The booking is already created successfully
 
             # Publish booking confirmation to SNS
             sns.publish(

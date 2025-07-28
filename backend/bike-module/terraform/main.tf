@@ -72,6 +72,13 @@ resource "aws_apigatewayv2_route" "get_bikes" {
   target    = "integrations/${aws_apigatewayv2_integration.bike_lambda_integration.id}"
 }
 
+# GET /bikes/{bikeId}/availability is PUBLIC (for checking availability)
+resource "aws_apigatewayv2_route" "get_bike_availability" {
+  api_id    = aws_apigatewayv2_api.bike_api.id
+  route_key = "GET /bikes/{bikeId}/availability"
+  target    = "integrations/${aws_apigatewayv2_integration.bike_lambda_integration.id}"
+}
+
 # SECURED routes (POST, PUT, DELETE)
 resource "aws_apigatewayv2_route" "post_bike" {
   api_id    = aws_apigatewayv2_api.bike_api.id
