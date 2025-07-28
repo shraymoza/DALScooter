@@ -168,7 +168,6 @@ resource "aws_lambda_function" "cancel_booking_lambda" {
   environment {
     variables = {
       BOOKINGS_TABLE = aws_dynamodb_table.bookings_table.name
-      BIKE_INVENTORY_TABLE = "BikeInventoryTable"
     }
   }
 

@@ -72,27 +72,67 @@ def check_bike_availability(bike_id, query_params):
         if not start_date or not end_date:
             return respond(400, {"error": "Missing startDate or endDate parameters"})
         
-        # First check if the bike exists and is available
+        # First check if the bike exists
         bike_response = table.get_item(Key={"bikeId": bike_id})
         if "Item" not in bike_response:
             return respond(404, {"error": "Bike not found"})
         
         bike = bike_response["Item"]
-        if bike.get("status") != "available":
-            return respond(200, {
-                "available": False,
-                "reason": f"Bike is currently {bike.get('status')}",
-                "bike": bike
-            })
         
-        # If bike status is available, we still need to check for booking conflicts
-        # This would typically be done by querying the bookings table
-        # For now, we'll return that the bike is available if its status is "available"
-        return respond(200, {
-            "available": True,
-            "bike": bike,
-            "message": "Bike is available for the requested time period"
-        })
+        # Check for booking conflicts by querying the bookings table
+        # We need to import boto3.client for this
+        import boto3
+        dynamodb_client = boto3.client('dynamodb')
+        bookings_table = os.environ.get("BOOKINGS_TABLE", "DALScooterBookings")
+        
+        try:
+            # Query for conflicting bookings
+            conflict_query_params = {
+                'TableName': bookings_table,
+                'IndexName': 'BikeBookingsIndex',
+                'KeyConditionExpression': 'bikeId = :bikeId',
+                'FilterExpression': '#status = :status AND startDate <= :endDate AND endDate >= :startDate',
+                'ExpressionAttributeNames': {
+                    '#status': 'status'
+                },
+                'ExpressionAttributeValues': {
+                    ':bikeId': {'S': bike_id},
+                    ':status': {'S': 'active'},
+                    ':startDate': {'S': start_date},
+                    ':endDate': {'S': end_date}
+                }
+            }
+            
+            conflict_response = dynamodb_client.query(**conflict_query_params)
+            
+            if conflict_response.get('Items'):
+                # Bike is not available due to conflicting bookings
+                conflicting_booking = conflict_response['Items'][0]
+                return respond(200, {
+                    "available": False,
+                    "reason": "Bike is already booked for this time period",
+                    "bike": bike,
+                    "conflictingBooking": {
+                        "startDate": conflicting_booking['startDate']['S'],
+                        "endDate": conflicting_booking['endDate']['S']
+                    }
+                })
+            else:
+                # Bike is available for the requested time period
+                return respond(200, {
+                    "available": True,
+                    "bike": bike,
+                    "message": "Bike is available for the requested time period"
+                })
+                
+        except Exception as e:
+            logger.error(f"Error checking booking conflicts: {str(e)}")
+            # If we can't check conflicts, assume bike is available
+            return respond(200, {
+                "available": True,
+                "bike": bike,
+                "message": "Bike appears to be available (conflict check failed)"
+            })
         
     except Exception as e:
         logger.error(f"Error checking bike availability: {str(e)}")

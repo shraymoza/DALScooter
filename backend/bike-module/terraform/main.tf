@@ -28,6 +28,7 @@ resource "aws_lambda_function" "bike_crud_handler" {
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.bike_inventory.name
+      BOOKINGS_TABLE = "DALScooterBookings"
     }
   }
 }

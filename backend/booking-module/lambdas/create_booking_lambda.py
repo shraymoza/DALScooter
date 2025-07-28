@@ -301,24 +301,9 @@ def lambda_handler(event, context):
             
             logger.info(f"Booking created successfully: {booking_id}")
 
-            # Update bike status to unavailable
-            try:
-                dynamodb.update_item(
-                    TableName=bike_inventory_table,
-                    Key={'bikeId': {'S': bike_id}},
-                    UpdateExpression="SET #status = :status",
-                    ExpressionAttributeNames={
-                        '#status': 'status'
-                    },
-                    ExpressionAttributeValues={
-                        ':status': {'S': 'unavailable'}
-                    }
-                )
-                logger.info(f"Bike {bike_id} status updated to unavailable")
-            except Exception as e:
-                logger.error(f"Error updating bike status: {str(e)}")
-                # Don't fail the booking creation if bike status update fails
-                # The booking is already created successfully
+            # Note: We don't update bike status to "unavailable" here
+            # The bike remains available for other time periods
+            # Availability is checked dynamically based on existing bookings
 
             # Publish booking confirmation to SNS
             sns.publish(
