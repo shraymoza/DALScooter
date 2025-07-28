@@ -98,6 +98,7 @@ resource "aws_lambda_function" "create_booking_lambda" {
     variables = {
       BOOKINGS_TABLE = aws_dynamodb_table.bookings_table.name
       BIKE_INVENTORY_TABLE = "BikeInventoryTable"
+      SNS_TOPIC_ARN = var.sns_topic_arn
     }
   }
 

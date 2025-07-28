@@ -12,7 +12,9 @@ logger.setLevel(logging.INFO)
 # Initialize AWS clients
 dynamodb = boto3.client('dynamodb')
 bookings_table = os.environ['BOOKINGS_TABLE']
-bike_inventory_table = os.environ['BIKE_INVENTORY_TABLE']  # Updated to use correct env var
+bike_inventory_table = os.environ['BIKE_INVENTORY_TABLE']
+sns = boto3.client("sns")
+sns_topic_arn = os.environ["SNS_TOPIC_ARN"]
 
 def lambda_handler(event, context):
     """
@@ -42,9 +44,9 @@ def lambda_handler(event, context):
                 user_email = claims.get('email', 'unknown@example.com')
             elif 'jwt' in authorizer:
                 # JWT authorizer might use 'jwt' instead of 'claims'
-                jwt_data = authorizer['jwt']
-                user_id = jwt_data.get('sub', 'unknown')
-                user_email = jwt_data.get('email', 'unknown@example.com')
+                jwt_claims = authorizer['jwt'].get('claims', {})
+                user_id = jwt_claims.get('sub', 'unknown')
+                user_email = jwt_claims.get('email', 'unknown@example.com')
             else:
                 # Fallback: try to extract from the authorizer directly
                 user_id = authorizer.get('sub', 'unknown')
@@ -209,6 +211,20 @@ def lambda_handler(event, context):
             )
             
             logger.info(f"Booking created successfully: {booking_id}")
+
+            # Publish booking confirmation to SNS
+            sns.publish(
+                TopicArn=sns_topic_arn,
+                Subject="DALScooter Booking Confirmation",
+                Message=(
+                    f"Hello {user_email},\n\n"
+                    f"Booking confirmed!\n\n"
+                    f"Booking ID: {booking_id}\n"
+                    f"Bike: {bike_data.get('model', {'S': 'Unknown'})['S']} ({bike_data.get('type', {'S': 'Unknown'})['S']})\n"
+                    f"From: {start_date}\nTo: {end_date}\n\n"
+                    f"Thank you for choosing DALScooter!"
+                )
+            )
             
             return {
                 'statusCode': 201,
@@ -240,6 +256,19 @@ def lambda_handler(event, context):
             
         except Exception as e:
             logger.error(f"Error creating booking: {str(e)}")
+
+            sns.publish(
+                TopicArn=sns_topic_arn,
+                Subject="DALScooter Booking Failed",
+                Message=(
+                    f"Hello {user_email},\n\n"
+                    f"Unfortunately, your booking attempt failed.\n\n"
+                    f"Booking details:\nBike ID: {bike_id}\n"
+                    f"Start: {start_date}, End: {end_date}\n\n"
+                    f"Please try again or contact support if the issue persists."
+                )
+            )
+
             return {
                 'statusCode': 500,
                 'headers': {

@@ -265,7 +265,7 @@ resource "aws_lambda_permission" "store_qa_api_permission" {
 }
 
 resource "aws_sns_topic" "authentication_sns_topic" {
-  name = "authentication_sns_topic"
+  name = "dalscooter_sns_topic"
 }
 
 resource "aws_sqs_queue" "registration_email_queue" {

@@ -17,3 +17,7 @@ output "api_gateway_endpoint" {
 output "authentication_sns_topic_arn" {
   value = aws_sns_topic.authentication_sns_topic.arn
 }
+
+output "sns_topic_arn" {
+  value = aws_sns_topic.authentication_sns_topic.arn
+}
